@@ -1,0 +1,29 @@
+#!/bin/sh
+# Push gate: the checks below must pass before a push leaves this machine.
+# Enable once: git config core.hooksPath .githooks
+# --no-verify is for production emergencies only; each use gets a follow-up issue.
+set -u
+ROOT=$(git rev-parse --show-toplevel)
+mkdir -p "$HOME/tmp"
+LOG="$HOME/tmp/$(basename "$ROOT")-push.log"
+
+# The checks run in a subshell with `|| exit 1` after each step, so a failure
+# ends the block and its real exit code is kept. Never pipe a test command
+# into tail or grep here: the hook would then read the pipe's exit code and a
+# failing suite could be pushed.
+(
+  echo "== gate $(date)"
+  cd "$ROOT" || exit 1
+  # Replace these with the project's own commands.
+  ./scripts/check-syntax || exit 1
+  ./scripts/build || exit 1
+  ./scripts/test || exit 1
+  # Generated files must match their sources.
+  git diff --quiet HEAD -- || { echo "the build changed tracked files: commit the generated copies"; exit 1; }
+  git diff --check origin/main...HEAD || exit 1
+  echo "== gate OK"
+) > "$LOG" 2>&1
+RC=$?
+
+tail -6 "$LOG"
+[ "$RC" = 0 ] || { echo "GATE RED: push blocked. Log: $LOG"; exit 1; }
