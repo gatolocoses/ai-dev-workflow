@@ -7,6 +7,21 @@ ROOT=$(git rev-parse --show-toplevel)
 mkdir -p "$HOME/tmp"
 LOG="$HOME/tmp/$(basename "$ROOT")-push.log"
 
+# Author identity: every commit this push adds must use the house no-reply
+# address. The commits it adds are the ones no remote-tracking branch has yet.
+# Do not use `--not --all` here: the local branch already points at the pushed
+# commit, so the list would always be empty and the check could never fail.
+# Try it once with a commit from another address before trusting it.
+ALLOWED="<id>+<user>@users.noreply.github.com"
+while read -r _ local_sha _ _; do
+  case $local_sha in *[!0]*) ;; *) continue ;; esac   # deleting a branch adds nothing
+  bad=$(git log --format='%ae' "$local_sha" --not --remotes | grep -v -x -F "$ALLOWED" | head -1)
+  if [ -n "$bad" ]; then
+    echo "push blocked: a commit is authored by $bad, not $ALLOWED"
+    exit 1
+  fi
+done
+
 # The checks run in a subshell with `|| exit 1` after each step, so a failure
 # ends the block and its real exit code is kept. Never pipe a test command
 # into tail or grep here: the hook would then read the pipe's exit code and a

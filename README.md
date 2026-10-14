@@ -92,9 +92,9 @@ The gate is tiered so that it stays fast enough to be obeyed:
 | Merge | Before a merge | The push tier plus the slow suites: browser tests, or one serial network-isolated run |
 | Timer | Hourly or daily | The push tier in a fresh clone of the main branch, with the result sent as a phone notification |
 
-Speed is a feature of the gate. The largest suite here has about 3,600 tests
-and its parallel push tier takes about 8 seconds; the serial run takes under a
-minute. A gate that takes ten minutes gets bypassed.
+Speed is a feature of the gate. In October 2026 the largest suite here has
+about 4,250 tests; its parallel push tier takes about 25 seconds and the
+serial run about 80. A gate that takes ten minutes gets bypassed.
 
 The tests may not reach the network. The runner blocks every connection that
 is not to the local machine, so a test cannot pass by accident because a
@@ -102,6 +102,16 @@ real service answered.
 
 The escape hatch (`git push --no-verify`) is allowed for production
 emergencies only, and using it creates a follow-up issue.
+
+**A flaky test is a bug.** A test that fails and then passes on a retry gets
+an issue the same day, not a shrug. The usual causes are shared resources and
+tight clocks: two runs at once (several agents and the timer) picking the same
+port, or a time limit that a busy machine misses. Tests reserve all their
+ports together, and time limits leave room for a loaded machine.
+
+**Every check in the gate is seen failing once.** A new check is tried with an
+input that must be refused before it is trusted. A check that cannot fail
+looks exactly like one that passes.
 
 ### 4. Pull request
 
@@ -126,9 +136,40 @@ The owner approves merges. Deploying is a separate, deliberate step run by the
 owner through one script, which is the only supported way to change the live
 system. Merged does not mean live.
 
+When the owner approves many pull requests at once, they are first merged
+together in a scratch clone and the merge tier runs on the result. The main
+branch moves only after that rehearsal is green.
+
+The deploy script refuses a tree with uncommitted changes or a branch other
+than the current main, the same checks the publish script makes. After the
+restart it confirms that a new process is running: an old process can keep
+answering the health checks while the new files sit unused.
+
 The project with the most users adds two things: work lands on a
 `development` branch and reaches `main` only as a release, and every release
 is tried on a staging server first.
+
+## Reviews beyond the diff
+
+Review per pull request sees one change at a time. Some defects only exist
+between changes: a validator written early accepts a value that a feature
+added weeks later uses in a dangerous way. Each diff was fine; the
+combination was not.
+
+So each project also gets reviews of the whole code, by an agent that did not
+write it:
+
+- a **full review** against the rules and the known risks, on a schedule and
+  after a burst of merges;
+- a **security review** that states who could attack and what they could
+  reach, and confirms each finding on a throwaway local copy, never on the
+  live system;
+- a **strict run** of the slow suites on the merged result.
+
+Findings become issues ranked by severity, and the owner picks which to fix.
+In one week such reviews found, on two projects with thousands of green
+tests, a delete route that ignored the kill switch and names typed by users
+reaching state that the whole service shares.
 
 ## Origin tags
 
@@ -157,6 +198,20 @@ request.
 **Ask with options.** A question to the owner comes with the situation in
 plain words and two or three concrete options, one marked as recommended. A
 bare "what do you want?" pushes the agent's work onto the owner.
+
+**The owner's attention is the scarce resource.** A report starts with the one
+thing to decide, then a few short points. Internal labels, codes and running
+commentary stay out of messages to the owner.
+
+**One guard for every path.** A safety switch (kill switch, dry run, read-only
+mode) is checked where the damage happens, or every path to that action is
+listed in one place with a test that each path obeys the switch. Two scripts
+that reach the same place, such as deploy and publish, check the same things.
+
+**Agents clean up after themselves.** Anything an agent starts in the
+background, such as a test server or a watcher, is noted by its process ID and
+stopped before the agent finishes. Processes are never stopped by name: a name
+can match processes the agent did not start.
 
 **Size budgets.** A new source file prompts a split at a soft limit and may
 not pass a hard limit (400 and 800 lines in the Python and Node projects, 600
@@ -218,6 +273,13 @@ Most of the rules above exist because of a specific failure.
 | The rules quoted a file's line count as its current size. Weeks later the file had grown again and the number was wrong. | Rules never quote a measurement as current. They say how to measure. |
 | A file generated at build time was not committed, so each deploy rebuilt it and left the tree dirty, which then blocked publishing. | The gate checks that every generated file matches its source. |
 | An agent widened a feature beyond what the issue asked for, and the run had to be stopped halfway. | The same zero-deviations rule, now with a second example. |
+| A later feature used names typed by users as keys of plain objects. The validator, written earlier, accepted names that reach state the whole process shares. Every test passed. | Reviews of the whole code by a fresh agent; such names refused; such maps built without a prototype. |
+| One delete route ignored the kill switch that every other path obeyed. | One guard for every path, with the paths listed and tested. |
+| The publish script refused a dirty tree; the deploy script did not. | Every path to the live system makes the same checks. |
+| A test server started by an agent outlived the agent and kept a CPU core at 100% for two days. | Agents note and stop what they start. |
+| A connection dropped in the middle of a deploy. The new files were on the server, the old process kept running, and the site still answered. | The deploy confirms that a new process started. |
+| Three checks failed together and passed on a retry, and were left alone. Days later another run of the same suite collided with itself on a port. | A flaky test gets an issue the same day; ports reserved together; time limits sized for a busy machine. |
+| A gate check meant to block commits from the wrong author compared them against every local branch, which already contained them. It could never fail, and for a month nobody noticed. | Every gate check is seen failing once before it is trusted. |
 
 ## Where the three projects differ
 
@@ -250,6 +312,7 @@ The [`templates/`](templates/) folder has a starting point:
 - [`AGENTS.md`](templates/AGENTS.md): a process contract to adapt
 - [`PULL_REQUEST_TEMPLATE.md`](templates/PULL_REQUEST_TEMPLATE.md)
 - [`pre-push`](templates/pre-push): a gate hook that reads the real exit code
+  and blocks commits from any author but the no-reply identity
 
 Start with three things: issues first, a gate that blocks red pushes, and the
 owner holding the merge. Add the other rules when a failure shows you need

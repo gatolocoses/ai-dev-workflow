@@ -32,11 +32,27 @@ that reaches the live system.
 - Red means fix forward. Never merge red.
 - `git push --no-verify` is for production emergencies only, and each use
   gets a follow-up issue.
+- The gate also blocks commits from any author but the no-reply identity.
+- A new gate check is tried once with an input it must refuse.
+- A test that fails and then passes on a retry gets an issue the same day.
+  Tests reserve their ports together and leave time limits room for a busy
+  machine.
 
 ## 4. Merge and deploy
 
 - The owner decides what is merged and when it is deployed.
 - Deploys happen only through `<deploy script>`. Merged does not mean live.
+- Many approved pull requests are first merged together in a scratch clone,
+  and the merge tier runs on the result before the main branch moves.
+- The deploy script refuses uncommitted changes and any branch but the
+  current main, and after the restart confirms that a new process runs.
+
+## 4a. Reviews beyond the diff
+
+- An agent that did not write the code reviews the whole repo: <how often>,
+  and after a burst of merges. A security review states who could attack and
+  what they could reach, and confirms findings on a throwaway local copy.
+- Findings become issues ranked by severity; the owner picks what to fix.
 
 ## 5. Execution discipline
 
@@ -46,6 +62,12 @@ that reaches the live system.
   note it in the pull request.
 - Ask the owner with context and two or three concrete options, one marked
   **(recommended)**. Ask before doing the work that depends on the answer.
+- Reports to the owner start with the one thing to decide, then a few short
+  points. No internal labels or running commentary.
+- A safety switch (kill switch, dry run) is checked where the damage happens,
+  or every path to that action is listed with a test that it obeys the switch.
+- Anything started in the background is noted by its process ID and stopped
+  before the session ends. Never stop processes by name.
 
 ## 6. Size budgets
 
